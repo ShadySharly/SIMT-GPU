@@ -9,19 +9,33 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 __global__ void suma2D_SHMEM (float* A, float* B, int N, int V) {
     
+    int offset, neighbour, mid_row, neigh_row, center_neigh;
+
     int local_i = threadIdx.x;
     int local_j = threadIdx.y;
+    //int local_id = local_i + local_j * blockDim.y;
 
     int global_i = blockDim.x * blockIdx.x + local_i;
     int global_j = blockDim.y * blockIdx.y + local_j;
-
     int global_id = global_i + global_j * N;
 
     B[global_id] = 0.0;
 
-    if (global_id < (N * N))
-        B[global_id] = A[global_id] + 1;
-    
+    for (offset = -V * (1 + N); offset <= V * (1 + N); offset++) {
+        neighbour = global_id + offset;
+        neigh_row = neighbour / N;
+        mid_row = global_id / N;
+        
+        // Condicion para no considerar vecinos fuera de los limites de la imagen
+        if ( (neighbour >= 0) && (neighbour < (N * N)) ) {
+            center_neigh = global_id - (mid_row - neigh_row) * N;
+
+            // Condicion para no considerar vecinos fuera de la vecindad
+            if ( (neighbour >= (center_neigh - V)) && (neighbour <= (center_neigh + V)) ) {
+                B[global_id] = B[global_id] + A[neighbour];
+            }
+        }
+    }
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -80,6 +94,11 @@ __host__ int main(int argc, char** argv) {
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+void suma2D_CPU(float* A, float* B, int N, int V) {
+
+    
+}
 
 
