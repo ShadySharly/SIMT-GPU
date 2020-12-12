@@ -7,6 +7,14 @@
 # include <pmmintrin.h>
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+void suma2D_CPU(float* A, float* B, int N, int V);
+
+void getParams (int argc, char** argv, char* nValue, char* bValue, char* vValue);
+
+int isInteger (char* input);
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 __global__ void suma2D (float* A, float* B, int N, int V) {
     
     int offset, neighbour, mid_row, neigh_row, center_neigh;
@@ -41,9 +49,14 @@ __global__ void suma2D (float* A, float* B, int N, int V) {
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 __host__ int main(int argc, char** argv) {
     
-    int N = atoi(argv[1]);
-    int Bs = atoi(argv[2]);
-    int V = atoi(argv[3]);
+    char* nValue = (char*)malloc(sizeof(char));
+    char* bValue = (char*)malloc(sizeof(char)); 
+    char* vValue = (char*)malloc(sizeof(char));
+    getParams (argc, argv, nValue, bValue, vValue);
+
+    int N = atoi(nValue);
+    int Bs = atoi(bValue);
+    int V = atoi(vValue);
 
     dim3 gridSize = dim3(N / Bs, N / Bs);
     dim3 blockSize = dim3(Bs, Bs);
@@ -82,12 +95,16 @@ __host__ int main(int argc, char** argv) {
             printf("\n");
     }
 
+    // Liberacion de memoria para el host y el device.
     cudaFree(d_a);
     cudaFree(d_b);
- 
-    // Se libera la memoria del host
     free(h_a);
     free(h_b);
+
+    // Liberacion de memoria para la recepcion de parametros de entrada.
+    free(nValue);
+    free(bValue);
+    free(vValue);
 
     return 0;
 }
@@ -96,8 +113,104 @@ __host__ int main(int argc, char** argv) {
 
 void suma2D_CPU(float* A, float* B, int N, int V) {
 
-    
+
+}
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// - INPUTS: - argc: Largo del arreglo de argumentos argv.
+//           - argv: Arreglo con los argumentos de entrada incluyendo en nombre del archivo.
+//           - iValue: Nombre del archivo de entrada que contiene el archivo en formato binario (RAW).
+//           - oValue: Nombre del archivo de salida con las secuencia ordenada en formato binario (RAW).
+//           - nValue: Largo de la secuencia contenida en el archivo de entrada (Numero entero multiplo de 16).
+//           - dValue: Bandera que controla el debug para imprimir los resultados por consola (1) o no (0).
+// - OUTPUTS: -
+// - DESCRIPTION: Procedimiento que obtiene los parametros entregados por consola y almacenados en la variable "argv", y los deposita en las variables
+//                iValue, oValue, nValue y dValue, en cada caso verificando la validez del valor entragado para cada bandera. Si alguna de estas banderas
+//                no cumple con los formatos especificados el programa es interrumpido.
+
+void getParams (int argc, char** argv, char* nValue, char* bValue, char* vValue) {
+
+    int c;
+    while ( (c = getopt (argc, argv, "N:B:V:")) != -1) {
+
+        switch (c) {
+            case 'N':
+                strcpy(nValue, optarg);
+                if (!isInteger(nValue)) {
+                    printf ("%s\n", "-------------------------------------------------------------------------");
+                    printf (" => El argumento de -%c debe ser un ENTERO POSITIVO.\n", c);
+                    printf (" => Programa abortado\n");
+                    printf ("%s\n", "-------------------------------------------------------------------------");
+                    exit(EXIT_FAILURE);
+                }
+
+                break;
+
+            case 'B':
+                strcpy(bValue, optarg);
+                if (!isInteger(bValue)) {
+                    printf ("%s\n", "-------------------------------------------------------------------------");
+                    printf (" => El argumento de -%c debe ser un ENTERO POSITIVO.\n", c);
+                    printf (" => Programa abortado\n");
+                    printf ("%s\n", "-------------------------------------------------------------------------");
+                    exit(EXIT_FAILURE);
+                }
+
+                break;
+            
+            case 'V':
+                strcpy(vValue, optarg);
+                if (!isInteger(vValue)) {
+                    printf ("%s\n", "-------------------------------------------------------------------------");
+                    printf (" => El argumento de -%c debe ser un ENTERO POSITIVO.\n", c);
+                    printf (" => Programa abortado\n");
+                    printf ("%s\n", "-------------------------------------------------------------------------");
+                    exit(EXIT_FAILURE);
+                }
+
+                break;
+
+            case '?':
+                if ( (optopt == 'N') || (optopt == 'B') || (optopt == 'V') ) { 
+                    printf ("%s\n", "-------------------------------------------------------------------------");
+                    printf (" => La opcion -%c requiere un argumento.\n", optopt);
+                    printf (" => Programa abortado\n");
+                    printf ("%s\n", "-------------------------------------------------------------------------");
+                    exit(EXIT_FAILURE);
+                }
+
+                else if (isprint (optopt)) {
+                    printf ("%s\n", "-------------------------------------------------------------------------");
+                    printf (" => Opcion -%c desconocida.\n", optopt);
+                    printf (" => Programa abortado\n");
+                    printf ("%s\n", "-------------------------------------------------------------------------");
+                    exit(EXIT_FAILURE);
+                }
+
+            default:
+                break;
+            }
+    }
 }
 
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// - INPUTS: - input: Cadena de caracteres a evaluar si corresponde a un numero entero positivo o no
+// - OUTPUTS: Valor booleano 1 si es entero positivo, 0 en caso contrario
+// - DESCRIPTION: Verifica si una cadena de caracteres de entrada posee en cada una de sus posiciones un caracter que es
+//                digito y es positivo
 
+int isInteger (char* input) {
 
+    int c;
+    // Recorrer el argumento entragado en cadena de caracteres, verificando que cada uno de estos corresponde a un numero.
+    for (c = 0; c < strlen(input); c++) {
+
+        // Si no se cumple para alguno de los caracteres, significa que el argumento no corresponde a un entero positivo y retorna 0.
+        if (!isdigit(input[c]))
+            return 0;
+    }
+    return 1;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////// END ////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
