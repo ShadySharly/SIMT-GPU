@@ -113,6 +113,28 @@ __host__ int main(int argc, char** argv) {
 
 void suma2D_CPU(float* A, float* B, int N, int V) {
 
+    int index, offset, neighbour, mid_row, neigh_row, center_neigh;
+
+
+    B[index] = 0.0;
+
+    for (index = 0; index <= (N*N); index++){
+        for (offset = -V * (1 + N); offset <= V * (1 + N); offset++) {
+            neighbour = index + offset;
+            neigh_row = neighbour / N;
+            mid_row = index / N;
+            
+            // Condicion para no considerar vecinos fuera de los limites de la imagen
+            if ( (neighbour >= 0) && (neighbour < (N * N)) ) {
+                center_neigh = index - (mid_row - neigh_row) * N;
+    
+                // Condicion para no considerar vecinos fuera de la vecindad
+                if ( (neighbour >= (center_neigh - V)) && (neighbour <= (center_neigh + V)) ) {
+                    B[index] = B[index] + A[neighbour];
+                }
+            }
+        } 
+    }
 
 }
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
