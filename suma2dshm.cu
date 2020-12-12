@@ -5,6 +5,7 @@
 # include <unistd.h>
 # include <string.h>
 # include <pmmintrin.h>
+# include <time.h>
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -13,6 +14,10 @@ void suma2D_CPU(float* A, float* B, int N, int V);
 void getParams (int argc, char** argv, char* nValue, char* bValue, char* vValue);
 
 int isInteger (char* input);
+
+float pixelSum (float* image, int N);
+
+void printImage (float* image, int N);
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 __global__ void suma2D_SHMEM (float* A, float* B, int N, int V) {
@@ -56,9 +61,12 @@ __global__ void suma2D_SHMEM (float* A, float* B, int N, int V) {
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 __host__ int main(int argc, char** argv) {
     
+    clock_t start_t, end_t;
+    float sum_gpu, sum_seq, gpu_time, cpu_time;
     char* nValue = (char*)malloc(sizeof(char));
     char* bValue = (char*)malloc(sizeof(char)); 
     char* vValue = (char*)malloc(sizeof(char));
+
     getParams (argc, argv, nValue, bValue, vValue);
 
     int N = atoi(nValue);
@@ -70,24 +78,26 @@ __host__ int main(int argc, char** argv) {
     
     float* h_a = (float*)malloc( (N * N) * sizeof(float));
     float* h_b = (float*)malloc( (N * N) * sizeof(float));
+    float* seq_b = (float*)malloc( (N * N) * sizeof(float));
 
     float* d_a;
     float* d_b;
 
-    cudaMalloc((void**) &d_a, (N * N) * sizeof(float));
-    cudaMalloc((void**) &d_b, (N * N) * sizeof(float));
-
     // SE LLENA LA IMAGEN CON VALORES ALEATORIOS
     for (int index = 0; index < (N * N); index++) {
         h_a[index] = (float) rand() / RAND_MAX; 
-        printf("%f ", h_a[index]);
-
-        if ( (index + 1) % N == 0)
-            printf("\n");
     }
 
-    printf("\n");
-    
+    // Se crean y se inicializan los eventos para capturar el tiempo de ejecucion para 
+    // todas las operaciones que se realizan utilizando la GPU.
+    cudaEvent_t start, stop;
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
+    cudaEventRecord(start, 0);
+
+    cudaMalloc((void**) &d_a, (N * N) * sizeof(float));
+    cudaMalloc((void**) &d_b, (N * N) * sizeof(float));
+
     cudaMemcpy(d_a, h_a, (N * N) * sizeof(float), cudaMemcpyHostToDevice);
     cudaMemcpy(d_b, h_b, (N * N) * sizeof(float), cudaMemcpyHostToDevice);
 
@@ -95,12 +105,35 @@ __host__ int main(int argc, char** argv) {
 
     cudaMemcpy(h_b, d_b, (N * N) * sizeof(float), cudaMemcpyDeviceToHost);
 
-    for (int index = 0; index < (N * N); index++) {
-        printf("%f ", h_b[index]);
+    cudaEventRecord(stop, 0);
+    cudaEventSynchronize(stop);
+    cudaEventElapsedTime(&gpu_time, start, stop);
 
-        if ( (index + 1) % N == 0)
-            printf("\n");
-    }
+    sum_gpu = pixelSum (h_b, N);
+    
+    printf("Tiempo GPU: %f (ms)\n", gpu_time);
+    printf("Suma GPU: %f\n", sum_gpu);
+
+    start_t = clock();
+
+    suma2D_CPU (h_a, seq_b, N, V);
+
+    end_t = clock();
+    cpu_time = (float)(end_t - start_t) / CLOCKS_PER_SEC;
+    cpu_time *= 1000;
+
+    sum_seq = pixelSum (seq_b, N);
+
+    printf("Tiempo CPU: %f (ms)\n", cpu_time);
+    printf("Suma CPU: %f\n", sum_seq);
+
+    printImage(h_a, N);
+    printf("\n");
+    printImage(h_b, N);
+
+    // Destruccion de los eventos iniciados
+    cudaEventDestroy(start);
+    cudaEventDestroy(stop);
 
     // Liberacion de memoria para el host y el device.
     cudaFree(d_a);
@@ -122,10 +155,9 @@ void suma2D_CPU(float* A, float* B, int N, int V) {
 
     int index, offset, neighbour, mid_row, neigh_row, center_neigh;
 
+    for (index = 0; index < (N * N); index++){
+        B[index] = 0.0;
 
-    B[index] = 0.0;
-
-    for (index = 0; index <= (N*N); index++){
         for (offset = -V * (1 + N); offset <= V * (1 + N); offset++) {
             neighbour = index + offset;
             neigh_row = neighbour / N;
@@ -142,7 +174,6 @@ void suma2D_CPU(float* A, float* B, int N, int V) {
             }
         } 
     }
-    
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -239,6 +270,38 @@ int isInteger (char* input) {
             return 0;
     }
     return 1;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// - INPUTS: - input: Cadena de caracteres a evaluar si corresponde a un numero entero positivo o no
+// - OUTPUTS: Valor booleano 1 si es entero positivo, 0 en caso contrario
+// - DESCRIPTION: Verifica si una cadena de caracteres de entrada posee en cada una de sus posiciones un caracter que es
+
+float pixelSum (float* image, int N) {
+
+    int index;
+    float sum = 0.0;
+
+    for (index = 0; index < (N * N); index++) {
+        sum += image[index];
+    }
+
+    return sum;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// - INPUTS: - input: Cadena de caracteres a evaluar si corresponde a un numero entero positivo o no
+// - OUTPUTS: Valor booleano 1 si es entero positivo, 0 en caso contrario
+// - DESCRIPTION: Verifica si una cadena de caracteres de entrada posee en cada una de sus posiciones un caracter que es
+
+void printImage (float* image, int N) {
+
+    for (int index = 0; index < (N * N); index++) {
+        printf("%f ", image[index]);
+
+        if ( (index + 1) % N == 0)
+            printf("\n");
+    }
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
