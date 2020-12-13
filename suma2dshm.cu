@@ -22,68 +22,89 @@ void printImage (float* image, int N);
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 __global__ void suma2D_SHMEM (float* A, float* B, int N, int V) {
     
+    // Se definen variables para realizar la suma de la vecindad de un determinado pixel de la imagen
     int offset, neighbour, mid_row, neigh_row, center_neigh;
 
+    // Se declara el identificador local de cada hebra en un boque, considerando su coordenada x e y.
     int local_i = threadIdx.x;
     int local_j = threadIdx.y;
+
+    // Se define el identificador local de la hebra en base a sus coordenadas locales.
     int local_id = local_i + local_j * blockDim.y;
 
+    // Se declara el identificador global de cada hebra en un boque, considerando su coordenada x e y.
     int global_i = blockDim.x * blockIdx.x + local_i;
     int global_j = blockDim.y * blockIdx.y + local_j;
+
+    // Se determina el identificador global de cada hebra, basandose en los identificadores globales en 
+    // termino de sus coordenadas.
     int global_id = global_i + global_j * N;
 
     // Se declara un arreglo en memoria compartida para cada bloque con
     // el maximo de hebras posibles para un bloque en CUDA.
     __shared__ float temp[1024];
 
+    // Se inicializa un vaor inicial 0.0 para la imagen de salida, a la cual se iran sumando los vecinos,
+    // asi tambien como el pixel central
     B[global_id] = 0.0;
+
+    // Al igual que el caso anterior, se inicialida en 0.0 el arreglo en memoria compartida, utilizando esta vez
+    // el identificador del bloque de la hebra actual
     temp[local_id] = 0.0;
     
+    // Se recorren el arreglo desde el pixel con la primera coordenada, hasta la ultima coordenada, 
+    // pasando por pixels que no son de la vecindad inclusive.
     for (offset = -V * (1 + N); offset <= V * (1 + N); offset++) {
-        neighbour = global_id + offset;
-        neigh_row = neighbour / N;
-        mid_row = global_id / N;
+        neighbour = global_id + offset; // Se determina la posicion del vecino del pixel central.
+        neigh_row = neighbour / N;  // La fila del vecino
+        mid_row = global_id / N;    // La fila del pixel central
         
         // Condicion para no considerar vecinos fuera de los limites de la imagen
         if ( (neighbour >= 0) && (neighbour < (N * N)) ) {
-            center_neigh = global_id - (mid_row - neigh_row) * N;
+            center_neigh = global_id - (mid_row - neigh_row) * N;   // Se determina el indice del pixel 
+                                                                    // central de cada fila de la imagen
 
-            // Condicion para no considerar vecinos fuera de la vecindad
+            // Condicion para no considerar pixeles fuera de la vecindad
             if ( (neighbour >= (center_neigh - V)) && (neighbour <= (center_neigh + V)) ) {
-                temp[local_id] = temp[local_id] + A[neighbour];
+                temp[local_id] = temp[local_id] + A[neighbour];     // Se suma el vecino al arreglo en
+                                                                    // memoria compartida
             }
         }
     }
 
-    B[global_id] = temp[local_id];
+    B[global_id] = temp[local_id];  // Cuando se han sumando todos los pixel de la vecindad se almacena el 
+                                    // resultado en memoria global
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 __host__ int main(int argc, char** argv) {
     
-    clock_t start_t, end_t;
-    float sum_gpu, sum_seq, gpu_time, cpu_time;
-    char* nValue = (char*)malloc(sizeof(char));
+    clock_t start_t, end_t; // Variables para catpurar el tiempo de ejecucion secuencial 
+    float sum_gpu, sum_seq, gpu_time, cpu_time; // Variables para almacenar la suma y los tiempos de ejecucion finales
+    char* nValue = (char*)malloc(sizeof(char)); 
     char* bValue = (char*)malloc(sizeof(char)); 
     char* vValue = (char*)malloc(sizeof(char));
 
+    // Se capturan los parametros de entrada
     getParams (argc, argv, nValue, bValue, vValue);
 
-    int N = atoi(nValue);
-    int Bs = atoi(bValue);
-    int V = atoi(vValue);
+    // Se transforman a numeros enteroros para su mejor manipulacion
+    int N = atoi(nValue);   // Tamaño de la imagen
+    int Bs = atoi(bValue);  // Tamaño de bloque
+    int V = atoi(vValue);   // Radio de la vecindad
 
-    dim3 gridSize = dim3(N / Bs, N / Bs);
-    dim3 blockSize = dim3(Bs, Bs);
+    dim3 gridSize = dim3(N / Bs, N / Bs);   // Se declara una grilla bidimensional dimension N/Bs x N/Bs
+    dim3 blockSize = dim3(Bs, Bs);          // Se declaran bloques bidimensionales de Bs x Bs
     
-    float* h_a = (float*)malloc( (N * N) * sizeof(float));
-    float* h_b = (float*)malloc( (N * N) * sizeof(float));
-    float* seq_b = (float*)malloc( (N * N) * sizeof(float));
+    float* h_a = (float*)malloc( (N * N) * sizeof(float));  // Se aloja memoria para la imagen en host
+    float* h_b = (float*)malloc( (N * N) * sizeof(float));  // Se aloja memoria para la imagen de salida en host
+    float* seq_b = (float*)malloc( (N * N) * sizeof(float));// Se aloja memoria para la imagen de salida secuencial en host
 
+    // Se declaran las variables para las variables de la imagen, y la imagen de salida en device
     float* d_a;
     float* d_b;
 
-    // SE LLENA LA IMAGEN CON VALORES ALEATORIOS
+    // Se rellena la imagen con valores aleatorios entre 0 y 1
     for (int index = 0; index < (N * N); index++) {
         h_a[index] = (float) rand() / RAND_MAX; 
     }
@@ -95,41 +116,49 @@ __host__ int main(int argc, char** argv) {
     cudaEventCreate(&stop);
     cudaEventRecord(start, 0);
 
+    // Se aloja memoria para ls variables en device
     cudaMalloc((void**) &d_a, (N * N) * sizeof(float));
     cudaMalloc((void**) &d_b, (N * N) * sizeof(float));
 
+    // Se traspasa el contenido desde host hacia device
     cudaMemcpy(d_a, h_a, (N * N) * sizeof(float), cudaMemcpyHostToDevice);
     cudaMemcpy(d_b, h_b, (N * N) * sizeof(float), cudaMemcpyHostToDevice);
-
+    
+    // Se ejecuta el kernel
     suma2D_SHMEM<<<gridSize, blockSize>>>(d_a, d_b, N, V);
 
+    // Se traspasa el contenido desde device hacia host
     cudaMemcpy(h_b, d_b, (N * N) * sizeof(float), cudaMemcpyDeviceToHost);
 
+    // Se detienen los eventos para obtener el tiempo de ejecucion final en GPU
     cudaEventRecord(stop, 0);
     cudaEventSynchronize(stop);
     cudaEventElapsedTime(&gpu_time, start, stop);
 
+    // Se realiza la suma de los pixeles de la matriz resultante por el metodo paralelo
     sum_gpu = pixelSum (h_b, N);
     
+    // Se muestran los tiempos de ejecucion y la suma final por consola
     printf("Tiempo GPU: %f (ms)\n", gpu_time);
     printf("Suma GPU: %f\n", sum_gpu);
 
+    // Se inicia el reloj para obtener el tiempo de ejecuion de la solucion secuencial en CPU
     start_t = clock();
 
+    // Se ejecuta la funcion secuencial
     suma2D_CPU (h_a, seq_b, N, V);
 
+    // Se detiene el reloj y se obtiene el tiempo de ejecucion en milisegundos
     end_t = clock();
     cpu_time = (float)(end_t - start_t) / CLOCKS_PER_SEC;
     cpu_time *= 1000;
 
+    // Se realiza la suma de los pixeles de la matriz resultante por el metodo secuencial
     sum_seq = pixelSum (seq_b, N);
 
+    // Se muestran los tiempos de ejecucion y la suma final por consola
     printf("Tiempo CPU: %f (ms)\n", cpu_time);
     printf("Suma CPU: %f\n", sum_seq);
-
-    printImage(h_a, N);
-    printf("\n");
-    printImage(h_b, N);
 
     // Destruccion de los eventos iniciados
     cudaEventDestroy(start);
@@ -140,6 +169,7 @@ __host__ int main(int argc, char** argv) {
     cudaFree(d_b);
     free(h_a);
     free(h_b);
+    free(seq_b);
 
     // Liberacion de memoria para la recepcion de parametros de entrada.
     free(nValue);
@@ -150,13 +180,14 @@ __host__ int main(int argc, char** argv) {
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
 void suma2D_CPU(float* A, float* B, int N, int V) {
 
+    // Se definen variables para realizar la suma de la vecindad de un determinado pixel de la imagen
     int index, offset, neighbour, mid_row, neigh_row, center_neigh;
 
+    // Se recorre la imagen 
     for (index = 0; index < (N * N); index++){
-        B[index] = 0.0;
+        B[index] = 0.0; // Se inicializa en 0.0 cada elemento del arreglo de salida
 
         for (offset = -V * (1 + N); offset <= V * (1 + N); offset++) {
             neighbour = index + offset;
@@ -179,14 +210,10 @@ void suma2D_CPU(float* A, float* B, int N, int V) {
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // - INPUTS: - argc: Largo del arreglo de argumentos argv.
 //           - argv: Arreglo con los argumentos de entrada incluyendo en nombre del archivo.
-//           - iValue: Nombre del archivo de entrada que contiene el archivo en formato binario (RAW).
-//           - oValue: Nombre del archivo de salida con las secuencia ordenada en formato binario (RAW).
-//           - nValue: Largo de la secuencia contenida en el archivo de entrada (Numero entero multiplo de 16).
-//           - dValue: Bandera que controla el debug para imprimir los resultados por consola (1) o no (0).
+//           - nValue: Tamaño de la imagen de entrada
+//           - bValue: Tamaño de bloque de entrada
+//           - vValue: Radio de la vecindad
 // - OUTPUTS: -
-// - DESCRIPTION: Procedimiento que obtiene los parametros entregados por consola y almacenados en la variable "argv", y los deposita en las variables
-//                iValue, oValue, nValue y dValue, en cada caso verificando la validez del valor entragado para cada bandera. Si alguna de estas banderas
-//                no cumple con los formatos especificados el programa es interrumpido.
 
 void getParams (int argc, char** argv, char* nValue, char* bValue, char* vValue) {
 
@@ -273,9 +300,7 @@ int isInteger (char* input) {
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// - INPUTS: - input: Cadena de caracteres a evaluar si corresponde a un numero entero positivo o no
-// - OUTPUTS: Valor booleano 1 si es entero positivo, 0 en caso contrario
-// - DESCRIPTION: Verifica si una cadena de caracteres de entrada posee en cada una de sus posiciones un caracter que es
+// - DESCRIPTION: Determina la suma de los elementos de una imagen, de largo y ancho N.
 
 float pixelSum (float* image, int N) {
 
@@ -290,9 +315,7 @@ float pixelSum (float* image, int N) {
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// - INPUTS: - input: Cadena de caracteres a evaluar si corresponde a un numero entero positivo o no
-// - OUTPUTS: Valor booleano 1 si es entero positivo, 0 en caso contrario
-// - DESCRIPTION: Verifica si una cadena de caracteres de entrada posee en cada una de sus posiciones un caracter que es
+// - DESCRIPTION: Mostrar una matriz por consola
 
 void printImage (float* image, int N) {
 
